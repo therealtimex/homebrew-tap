@@ -16,7 +16,7 @@ cask "realtimex" do
   homepage "https://realtimex.ai/"
 
   depends_on formula: "redis"
-  app "RealTimeX.app"
+  app "RealTimeX.AI.app"
 
   # Optional: What to tell the user after installation
   caveats <<~EOS
