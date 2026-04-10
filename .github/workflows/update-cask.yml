@@ -103,9 +103,14 @@ jobs:
           VERSIONS: ${{ steps.versions.outputs.versions }}
         run: |
           chmod +x scripts/update_cask.sh
-          LATEST_VERSION=""
-          LATEST_ARM_SHA=""
-          LATEST_INTEL_SHA=""
+
+          # Track latest stable and dev separately for rolling casks
+          LATEST_STABLE=""
+          LATEST_STABLE_ARM=""
+          LATEST_STABLE_INTEL=""
+          LATEST_DEV=""
+          LATEST_DEV_ARM=""
+          LATEST_DEV_INTEL=""
 
           for VERSION in $VERSIONS; do
             echo "============================================"
@@ -118,36 +123,47 @@ jobs:
               "https://api.github.com/repos/therealtimex/realtimex/releases/tags/v${VERSION}" \
               | jq -r '.assets[] | "\(.name) \(.digest)"')
 
-            # ARM64 DMG: RealTimeX.AI-{version}-arm64.dmg
             ARM_SHA=$(echo "$ASSETS" \
               | grep -E "RealTimeX\.AI-${VERSION}-arm64\.dmg " \
               | awk '{print $2}' | sed 's/^sha256://')
 
-            # Intel DMG: RealTimeX.AI-{version}.dmg (no arch suffix)
             INTEL_SHA=$(echo "$ASSETS" \
               | grep -E "RealTimeX\.AI-${VERSION}\.dmg " \
               | awk '{print $2}' | sed 's/^sha256://')
 
             if [[ -z "$ARM_SHA" || -z "$INTEL_SHA" ]]; then
-              echo "ERROR: Could not find DMG digests for v${VERSION} in GitHub API. Skipping."
-              echo "  ARM64 SHA: '${ARM_SHA}'"
-              echo "  Intel SHA: '${INTEL_SHA}'"
+              echo "ERROR: Could not find DMG digests for v${VERSION}. Skipping."
               continue
             fi
 
             echo "ARM64  SHA256: $ARM_SHA"
             echo "Intel  SHA256: $INTEL_SHA"
 
+            # Write pinned versioned cask
             scripts/update_cask.sh "realtimex@${VERSION}" "$VERSION" "$ARM_SHA" "$INTEL_SHA" "Casks"
-            LATEST_VERSION="$VERSION"
-            LATEST_ARM_SHA="$ARM_SHA"
-            LATEST_INTEL_SHA="$INTEL_SHA"
+
+            # Track latest per channel (dev vs stable)
+            if [[ "$VERSION" == *"-dev" ]]; then
+              LATEST_DEV="$VERSION"
+              LATEST_DEV_ARM="$ARM_SHA"
+              LATEST_DEV_INTEL="$INTEL_SHA"
+            else
+              LATEST_STABLE="$VERSION"
+              LATEST_STABLE_ARM="$ARM_SHA"
+              LATEST_STABLE_INTEL="$INTEL_SHA"
+            fi
           done
 
-          # Update the rolling cask to the latest processed version
-          if [[ -n "$LATEST_VERSION" ]]; then
-            scripts/update_cask.sh "realtimex" "$LATEST_VERSION" "$LATEST_ARM_SHA" "$LATEST_INTEL_SHA" "Casks"
-            echo "Rolling cask updated to v${LATEST_VERSION}"
+          # Update rolling stable cask (realtimex.rb)
+          if [[ -n "$LATEST_STABLE" ]]; then
+            scripts/update_cask.sh "realtimex" "$LATEST_STABLE" "$LATEST_STABLE_ARM" "$LATEST_STABLE_INTEL" "Casks"
+            echo "Stable rolling cask updated to v${LATEST_STABLE}"
+          fi
+
+          # Update rolling dev cask (realtimex-dev.rb)
+          if [[ -n "$LATEST_DEV" ]]; then
+            scripts/update_cask.sh "realtimex-dev" "$LATEST_DEV" "$LATEST_DEV_ARM" "$LATEST_DEV_INTEL" "Casks"
+            echo "Dev rolling cask updated to v${LATEST_DEV}"
           fi
 
       # ---------------------------------------------------------------
