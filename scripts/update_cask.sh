@@ -38,9 +38,10 @@ cask "CASK_NAME_PLACEHOLDER" do
 end
 EOF_TEMPLATE
 
-sed -i "s/CASK_NAME_PLACEHOLDER/${CASK_NAME}/g"   "$OUTPUT_FILE"
-sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g"         "$OUTPUT_FILE"
-sed -i "s/ARM_SHA_PLACEHOLDER/${ARM_SHA}/g"         "$OUTPUT_FILE"
-sed -i "s/INTEL_SHA_PLACEHOLDER/${INTEL_SHA}/g"     "$OUTPUT_FILE"
+# Use | as delimiter to avoid conflicts with any / in values
+sed -i "s|CASK_NAME_PLACEHOLDER|${CASK_NAME}|g"  "$OUTPUT_FILE"
+sed -i "s|VERSION_PLACEHOLDER|${VERSION}|g"        "$OUTPUT_FILE"
+sed -i "s|ARM_SHA_PLACEHOLDER|${ARM_SHA}|g"        "$OUTPUT_FILE"
+sed -i "s|INTEL_SHA_PLACEHOLDER|${INTEL_SHA}|g"    "$OUTPUT_FILE"
 
 echo "Written: $OUTPUT_FILE"
