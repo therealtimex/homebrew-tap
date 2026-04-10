@@ -1,0 +1,180 @@
+name: Update Cask Formula
+
+# NOTE: GitHub Actions minimum cron interval is 5 minutes.
+# The check is nearly instant when no new release exists.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: |
+          Specific version to add/update (e.g. 1.0.61).
+          Leave empty to auto-detect from recent releases.
+        required: false
+        type: string
+      check_last_n:
+        description: |
+          When no version is specified, how many recent releases to check
+          for missing casks (useful for backfilling). Default: 5, max: 20.
+        required: false
+        default: "5"
+        type: string
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------
+      # 1. Figure out which versions need a cask update
+      # ---------------------------------------------------------------
+      - name: Resolve versions to process
+        id: versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ -n "${{ inputs.version }}" ]]; then
+            # Manual single-version run
+            echo "versions=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "Manually specified version: ${{ inputs.version }}"
+            exit 0
+          fi
+
+          # Fetch recent releases (scheduled or multi-version backfill)
+          N="${{ inputs.check_last_n || '5' }}"
+          echo "Checking last $N releases from therealtimex/realtimex ..."
+
+          # Tags to skip entirely (bad tags, future major versions not ready yet)
+          SKIP_PATTERNS=(
+            "^resources$"   # garbage tag
+            "^v2\."         # 2.x series not ready
+          )
+
+          TAGS=$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/therealtimex/realtimex/releases?per_page=${N}" \
+            | jq -r '.[].tag_name')
+
+          if [[ -z "$TAGS" ]]; then
+            echo "No releases found or API error."
+            echo "versions=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Filter out skipped tags
+          FILTERED_TAGS=()
+          for TAG in $TAGS; do
+            SKIP=false
+            for PATTERN in "${SKIP_PATTERNS[@]}"; do
+              if [[ "$TAG" =~ $PATTERN ]]; then
+                echo "  Skipping tag: $TAG (matches filter '$PATTERN')"
+                SKIP=true
+                break
+              fi
+            done
+            [[ "$SKIP" == "false" ]] && FILTERED_TAGS+=("$TAG")
+          done
+          TAGS="${FILTERED_TAGS[*]}"
+
+          MISSING=()
+          for TAG in ${TAGS}; do
+            VERSION="${TAG#v}"   # strip leading 'v'
+            CASK_FILE="Casks/realtimex@${VERSION}.rb"
+            if [[ ! -f "$CASK_FILE" ]]; then
+              echo "  Missing cask for v${VERSION} -> will process"
+              MISSING+=("$VERSION")
+            else
+              echo "  Cask already exists for v${VERSION} -> skip"
+            fi
+          done
+
+          # Space-separated list (empty = nothing to do)
+          echo "versions=${MISSING[*]}" >> "$GITHUB_OUTPUT"
+
+      # ---------------------------------------------------------------
+      # 2. For each missing version: download DMGs, hash, write casks
+      # ---------------------------------------------------------------
+      - name: Process missing versions
+        if: steps.versions.outputs.versions != ''
+        env:
+          VERSIONS: ${{ steps.versions.outputs.versions }}
+        run: |
+          chmod +x scripts/update_cask.sh
+
+          # Track the latest version processed to update the rolling cask
+          LATEST_VERSION=""
+
+          for VERSION in $VERSIONS; do
+            echo "============================================"
+            echo "Processing v${VERSION}"
+            echo "============================================"
+
+            ARM_URL="https://github.com/therealtimex/realtimex/releases/download/v${VERSION}/RealTimeX.AI-${VERSION}-arm64.dmg"
+            INTEL_URL="https://github.com/therealtimex/realtimex/releases/download/v${VERSION}/RealTimeX.AI-${VERSION}.dmg"
+
+            echo "Downloading ARM64: $ARM_URL"
+            if ! curl -fL --retry 3 --retry-delay 5 -o /tmp/arm64.dmg "$ARM_URL"; then
+              echo "ERROR: Failed to download ARM64 DMG for v${VERSION}. Skipping."
+              continue
+            fi
+
+            echo "Downloading Intel: $INTEL_URL"
+            if ! curl -fL --retry 3 --retry-delay 5 -o /tmp/intel.dmg "$INTEL_URL"; then
+              echo "ERROR: Failed to download Intel DMG for v${VERSION}. Skipping."
+              rm -f /tmp/arm64.dmg
+              continue
+            fi
+
+            ARM_SHA=$(sha256sum /tmp/arm64.dmg | awk '{print $1}')
+            INTEL_SHA=$(sha256sum /tmp/intel.dmg | awk '{print $1}')
+            rm -f /tmp/arm64.dmg /tmp/intel.dmg
+
+            echo "ARM64  SHA256: $ARM_SHA"
+            echo "Intel  SHA256: $INTEL_SHA"
+
+            # Always write the pinned versioned cask
+            scripts/update_cask.sh "realtimex@${VERSION}" "$VERSION" "$ARM_SHA" "$INTEL_SHA" "Casks"
+
+            LATEST_VERSION="$VERSION"
+          done
+
+          # Update the rolling cask (realtimex.rb) to the highest processed version.
+          # We only do this when we've successfully processed at least one version.
+          if [[ -n "$LATEST_VERSION" ]]; then
+            # Re-derive hashes from the versioned cask we just wrote so we don't
+            # need to re-download.
+            ARM_SHA=$(grep 'arm:' "Casks/realtimex@${LATEST_VERSION}.rb" | sed "s/.*arm:   \"//;s/\",//")
+            INTEL_SHA=$(grep 'intel:' "Casks/realtimex@${LATEST_VERSION}.rb" | sed "s/.*intel: \"//;s/\"//")
+            scripts/update_cask.sh "realtimex" "$LATEST_VERSION" "$ARM_SHA" "$INTEL_SHA" "Casks"
+            echo "Rolling cask updated to v${LATEST_VERSION}"
+          fi
+
+      # ---------------------------------------------------------------
+      # 3. Commit and push if anything changed
+      # ---------------------------------------------------------------
+      - name: Commit and push
+        if: steps.versions.outputs.versions != ''
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add Casks/
+
+          if git diff --cached --quiet; then
+            echo "No cask files changed (all downloads may have failed). Nothing to commit."
+            exit 0
+          fi
+
+          # Build a descriptive commit message listing all updated versions
+          VERSIONS="${{ steps.versions.outputs.versions }}"
+          VERSION_LIST=$(echo "$VERSIONS" | tr ' ' '\n' | sed 's/^/v/' | tr '\n' ' ' | sed 's/ $//')
+
+          git commit -m "chore: add cask(s) for ${VERSION_LIST}"
+          git push
