@@ -18,7 +18,11 @@ cask "realtimex@1.0.59-dev" do
   depends_on formula: "redis"
   app "RealTimeX.AI.app"
 
-  # Optional: What to tell the user after installation
+  preflight do
+    system_command "/usr/bin/osascript",
+                   args: ["-e", 'tell application "RealTimeX.AI" to quit']
+  end
+
   caveats <<~EOS
     RealTimeX.AI will be placed in Applications.
   EOS

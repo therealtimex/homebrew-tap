@@ -20,8 +20,7 @@ cask "realtimex@1.0.115-dev" do
 
   preflight do
     system_command "/usr/bin/osascript",
-                   args: ["-e", 'tell application "RealTimeX.AI" to quit'],
-    sleep 2
+                   args: ["-e", 'tell application "RealTimeX.AI" to quit']
   end
 
   caveats <<~EOS
