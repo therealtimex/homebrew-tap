@@ -29,7 +29,6 @@ cask "CASK_NAME_PLACEHOLDER" do
   desc "Find powerful AI Agents for RealTimeX"
   homepage "https://realtimex.ai/"
 
-  depends_on formula: "redis"
   app "RealTimeX.AI.app"
 
   preflight do
