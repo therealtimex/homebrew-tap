@@ -21,7 +21,6 @@ cask "realtimex@1.0.123-dev" do
   preflight do
     system_command "/usr/bin/osascript",
                    args: ["-e", 'tell application "RealTimeX.AI" to quit'],
-                   run_as_administrator: false
     sleep 2
   end
 

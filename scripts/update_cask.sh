@@ -34,8 +34,7 @@ cask "CASK_NAME_PLACEHOLDER" do
 
   preflight do
     system_command "/usr/bin/osascript",
-                   args: ["-e", 'tell application "RealTimeX.AI" to quit'],
-                   run_as_administrator: false
+                   args: ["-e", 'tell application "RealTimeX.AI" to quit']
     sleep 2
   end
 
