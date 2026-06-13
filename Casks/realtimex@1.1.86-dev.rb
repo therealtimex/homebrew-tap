@@ -1,4 +1,4 @@
-cask "realtimex-dev" do
+cask "realtimex@1.1.86-dev" do
   # Define what 'arch' should resolve to for each CPU
   arch arm: "-arm64", intel: ""
 
