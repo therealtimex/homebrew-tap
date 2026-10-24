@@ -2,11 +2,11 @@ cask "realtimex-dev" do
   # Define what 'arch' should resolve to for each CPU
   arch arm: "-arm64", intel: ""
 
-  version "1.2.112-dev"
+  version "1.2.113-dev"
 
   # Provide both SHA256 hashes
-  sha256 arm:   "a93d692aa6dedbb4e61e07a8763cf75225a5bbf044468cc1a6eeee758c96f1a3",
-         intel: "d6702d98e544cb41142d458b552135393004ff6488d50e34e75121d1259d31cc"
+  sha256 arm:   "ce5d7faa287a09ef194fdc0f3005cde475764626baddfd4e1667e515b03cc94a",
+         intel: "a93ab913b8fb10f3992dbe1d9b3b828f79ca7d12ed5e4ab4868842f523c2a806"
 
   # Use the #{arch} variable in your URL
   url "https://github.com/therealtimex/realtimex/releases/download/v#{version}/RealTimeX.AI-#{version}#{arch}.dmg"
